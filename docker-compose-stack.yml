@@ -1,0 +1,68 @@
+# Copyright (c) Jupyter Development Team.
+# Distributed under the terms of the Modified BSD License.
+
+# JupyterHub docker-compose configuration file
+version: '3.1'
+
+services:
+  hub-db:
+    image: postgres:9.5
+    container_name: jupyterhub-db
+    restart: always
+    environment:
+      POSTGRES_DB: jupyterhub
+      PGDATA: /var/lib/postgresql/data
+    env_file:
+      - secrets/postgres.env
+    volumes:
+      - "db:/var/lib/postgresql/data"
+
+  hub:
+    depends_on:
+      - hub-db
+    build:
+      context: .
+      dockerfile: Dockerfile.jupyterhub
+      args:
+        JUPYTERHUB_VERSION: 0.8.0
+    restart: always
+    image: jupyterhub
+    container_name: jupyterhub
+    volumes:
+      # Bind Docker socket on the host so we can connect to the daemon from
+      # within the container
+      - "/var/run/docker.sock:/var/run/docker.sock:rw"
+      # Bind Docker volume on host for JupyterHub database and cookie secrets
+      - "data:/data"
+      - "/etc/shadow:/etc/shadow"
+      - "/etc/passwd:/etc/passwd"
+      - "/etc/pam.d:/etc/pam.d"
+    ports:
+      - "443:443"
+    links:
+      - hub-db
+    environment:
+      # All containers will join this network
+      DOCKER_NETWORK_NAME: jupyterhub_default
+      # JupyterHub will spawn this Notebook image for users
+      DOCKER_NOTEBOOK_IMAGE: datalab195/base_notebook
+      # Notebook directory inside user image
+      DOCKER_NOTEBOOK_DIR: /home/jovyan/work
+      # Using this run command (optional)
+      DOCKER_SPAWN_CMD: "start-notebook.sh"
+      # Postgres db info
+      POSTGRES_DB: jupyterhub
+      POSTGRES_HOST: hub-db
+    env_file:
+      - secrets/postgres.env
+      - secrets/oauth.env
+    command: >
+      jupyterhub -f /srv/jupyterhub/jupyterhub_config.py
+
+volumes:
+  data:
+    external:
+      name: jupyterhub-data
+  db:
+    external:
+      name: jupyterhub-db-data 
